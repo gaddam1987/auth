@@ -1,0 +1,35 @@
+server:
+    port: 9091
+hello:
+  ribbon:
+    eureka:
+      enabled: false
+    listOfServers: localhost:4030, localhost:4031
+keys:
+   private:
+     key:
+       location: app1_private_key.pem
+   public:
+     key:
+       location: app1_public_key.pem
+spring:
+  profiles: inst1
+
+---
+
+server:
+    port: 9092
+hello:
+  ribbon:
+    eureka:
+      enabled: false
+    listOfServers: localhost:4030, localhost:4031
+keys:
+   private:
+     key:
+       location: app2_private.pem
+   public:
+     key:
+       location: app2_public.pem
+spring:
+  profiles: inst2
