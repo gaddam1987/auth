@@ -1,10 +1,15 @@
 package gaddam1987.github.auth.config.util;
 
 import gaddam1987.github.auth.config.Message;
+import gaddam1987.github.auth.config.RSAPubKeyReader;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.io.UnsupportedEncodingException;
-import java.security.*;
+import java.security.MessageDigest;
+import java.security.PrivateKey;
+import java.security.PublicKey;
+import java.security.Signature;
 import java.util.Arrays;
 
 import static org.apache.commons.codec.binary.Base64.decodeBase64;
@@ -12,15 +17,23 @@ import static org.apache.commons.codec.binary.Base64.encodeBase64;
 
 @Component
 public class RSASHA1SignatureUtil {
-    public static final String SIGNATURE_NAME = "SHA256withRSA";
+    private static final String SIGNATURE_NAME = "SHA256withRSA";
 
+    private final RSAPubKeyReader rsaKeyReader;
+
+    @Autowired
+    public RSASHA1SignatureUtil(RSAPubKeyReader rsaKeyReader) {
+        this.rsaKeyReader = rsaKeyReader;
+    }
 
     /**
      * @param message Output content for message
      * @return The signature, digest and actual message.
      * @throws UnsupportedOperationException If there is no private key.
+     * @throws ResponseSigningException      If unable to sign the response.
      */
-    public Message sign(String message, PrivateKey privateKey) {
+    public Message sign(String message) {
+        PrivateKey privateKey = rsaKeyReader.getPrivateKey();
         if (privateKey == null) {
             throw new UnsupportedOperationException("Cannot sign the base string: no private key supplied.");
         }
@@ -32,24 +45,23 @@ public class RSASHA1SignatureUtil {
             signer.update(contentDigest);
             byte[] signatureBytes = signer.sign();
 
-
             return new Message(message,
                     new String(encodeBase64(contentDigest), "UTF-8"),
                     new String(encodeBase64(signatureBytes), "UTF-8"));
 
-        } catch (NoSuchAlgorithmException | InvalidKeyException | SignatureException e) {
-            throw new IllegalStateException(e);
-        } catch (UnsupportedEncodingException e) {
-            throw new RuntimeException(e);
+        } catch (Exception e) {
+            throw new ResponseSigningException("Unable to sign the response", e);
         }
     }
 
     /**
      * @param inputMessage Domain object which holds message, digest, signature
-     * @throws UnsupportedEncodingException  If the signature is invalid for the specified base string.
+     * @throws SignatureVerifyingException   If the signature is invalid for the specified base string. or if we face any error while
+     *                                       verifying
      * @throws UnsupportedOperationException If there is no public key.
      */
-    public void verify(Message inputMessage, PublicKey publicKey) throws UnsupportedEncodingException {
+    public void verify(Message inputMessage) throws UnsupportedEncodingException {
+        PublicKey publicKey = rsaKeyReader.getPublicKey();
         if (publicKey == null) {
             throw new UnsupportedOperationException("A public key must be provided to verify signatures.");
         }
@@ -70,18 +82,18 @@ public class RSASHA1SignatureUtil {
             if (!verifier.verify(signatureBytes)) {
                 throw new SignatureVerifyingException("Invalid signature");
             }
-        } catch (NoSuchAlgorithmException | InvalidKeyException | SignatureException e) {
-            throw new IllegalStateException(e);
+        } catch (Exception e) {
+            throw new SignatureVerifyingException("Exception while verifying signature", e);
         }
     }
 
-    private void verifyContentDigest(String message, byte[] messageDigest) throws NoSuchAlgorithmException {
+    private void verifyContentDigest(String message, byte[] messageDigest) throws Exception {
         if (!Arrays.equals(sha256Digest(message), messageDigest)) {
             throw new SignatureVerifyingException("Content digest mismatched");
         }
     }
 
-    public byte[] sha256Digest(String message) throws NoSuchAlgorithmException {
+    private byte[] sha256Digest(String message) throws Exception {
         MessageDigest instance = MessageDigest.getInstance("SHA-256");
         instance.update(message.getBytes());
         return instance.digest();

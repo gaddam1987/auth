@@ -1,17 +1,16 @@
 package gaddam1987.github.auth.config;
 
-import gaddam1987.github.auth.config.util.AuthenticationException;
-import gaddam1987.github.auth.config.util.RSASHA1SignatureUtil;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import gaddam1987.github.auth.config.util.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.*;
-import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.client.RestTemplate;
 
 import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.net.URI;
 
@@ -26,63 +25,75 @@ public class AuthenticationController {
 
     private final String X_CONTENT_DIGEST = "X-Content-Digest";
     private final String X_SIGNATURE = "X-Signature";
-    ;
-    private final RSASHA1SignatureUtil rsasha1SignatureUtil;
 
+    private final RSASHA1SignatureUtil rsasha1SignatureUtil;
     private final RestTemplate restTemplate;
-    private RSAPubKeyReader rsaKeyReader;
+    private final ObjectMapper objectMapper;
 
 
     @Autowired
     public AuthenticationController(RSASHA1SignatureUtil rsasha1SignatureUtil,
                                     RestTemplate restTemplate,
-                                    RSAPubKeyReader rsaKeyReader) {
+                                    ObjectMapper objectMapper) {
         this.rsasha1SignatureUtil = rsasha1SignatureUtil;
         this.restTemplate = restTemplate;
-        this.rsaKeyReader = rsaKeyReader;
+        this.objectMapper = objectMapper;
     }
 
     @RequestMapping
     public ResponseEntity<?> handle(HttpEntity<String> httpEntity, HttpServletRequest request) throws IOException {
         HttpHeaders headers = httpEntity.getHeaders();
 
+        verifyRequest(httpEntity, headers);
+
+        ResponseEntity<String> targetApplicationResponse = callTargetApplication(httpEntity, request, headers);
+
+
+        Message signedMessage = signTargetResponse(targetApplicationResponse.getBody());
+
+        HttpHeaders responseHeaders = createResponseHeaders(targetApplicationResponse, signedMessage);
+
+
+        return new ResponseEntity<Object>(signedMessage.getMessage(),
+                responseHeaders,
+                HttpStatus.valueOf(targetApplicationResponse.getStatusCodeValue()));
+
+    }
+
+    private Message signTargetResponse(String message) {
+        return rsasha1SignatureUtil.sign(message);
+    }
+
+    private HttpHeaders createResponseHeaders(ResponseEntity<String> targetApplicationResponse, Message signedMessage) {
+        HttpHeaders responseHeaders = new HttpHeaders();
+        responseHeaders.putAll(targetApplicationResponse.getHeaders());
+        responseHeaders.put(X_CONTENT_DIGEST, newArrayList(signedMessage.getDigest()));
+        responseHeaders.put(X_SIGNATURE, newArrayList(signedMessage.getSignature()));
+        return responseHeaders;
+    }
+
+    private void verifyRequest(HttpEntity<String> httpEntity, HttpHeaders headers) throws IOException {
+
         assertBody(httpEntity);
         assertHeaderNotEmpty(httpEntity, X_CONTENT_DIGEST);
         assertHeaderNotEmpty(httpEntity, X_SIGNATURE);
 
 
-        rsasha1SignatureUtil.verify(new Message(httpEntity.getBody(), headers.get(X_CONTENT_DIGEST).get(0), headers.get(X_SIGNATURE).get(0)),
-                rsaKeyReader.getPublicKey());
-        RequestEntity<String> requestEntity = new RequestEntity<>(httpEntity.getBody(),
-                headers,
-                HttpMethod.resolve(request.getMethod()),
-                URI.create(format("http://hello/%s", request.getRequestURI())));
+        rsasha1SignatureUtil.verify(new Message(httpEntity.getBody(), headers.get(X_CONTENT_DIGEST).get(0), headers.get(X_SIGNATURE).get(0)));
+    }
+
+    private ResponseEntity<String> callTargetApplication(HttpEntity<String> httpEntity, HttpServletRequest request, HttpHeaders headers) {
+        ResponseEntity<String> targetApplicationResponseEntity;
 
         try {
-            ResponseEntity<String> exchange = restTemplate.exchange(requestEntity, String.class);
-
-            /**
-             * Sign the response
-             */
-            String responseMessage = exchange.getBody();
-
-            Message signedMessage = rsasha1SignatureUtil.sign(responseMessage, rsaKeyReader.getPrivateKey());
-
-            HttpHeaders responseHeaders = new HttpHeaders();
-
-            responseHeaders.putAll(exchange.getHeaders());
-            responseHeaders.put(X_CONTENT_DIGEST, newArrayList(signedMessage.getDigest()));
-            responseHeaders.put(X_SIGNATURE, newArrayList(signedMessage.getSignature()));
-
-
-            return new ResponseEntity<Object>(signedMessage.getMessage(),
-                    responseHeaders,
-                    HttpStatus.valueOf(exchange.getStatusCodeValue()));
+            RequestEntity<String> requestEntity = new RequestEntity<>(httpEntity.getBody(),
+                    headers,
+                    HttpMethod.resolve(request.getMethod()),
+                    URI.create(format("http://hello/%s", request.getRequestURI())));
+            return restTemplate.exchange(requestEntity, String.class);
         } catch (Exception e) {
-            log.warn("Application Failed to respond with bla bla...", e);
-            throw new RuntimeException("Some shit happened while authenticating", e);
+            throw new TargetApplicationException("Some shit happened while calling the target application", e);
         }
-
     }
 
     private void assertHeaderNotEmpty(HttpEntity<String> httpEntity, String headerName) {
@@ -97,33 +108,43 @@ public class AuthenticationController {
         }
     }
 
-    @Component
-    public static class AuthenticationService {
+    @ExceptionHandler(value = TargetApplicationException.class)
+    public ResponseEntity<?> handleTargetApplicationException(TargetApplicationException e) {
+        ErrorResponse error = ErrorResponse.dummyErrorResponse();
+        return handleErrorResponse(error, e);
+    }
 
-        public void verifySig() {
+    @ExceptionHandler(value = SignatureVerifyingException.class)
+    public ResponseEntity<?> handleRequestVerificationException(TargetApplicationException e) {
+        ErrorResponse error = ErrorResponse.dummyErrorResponse();
+        return handleErrorResponse(error, e);
+    }
 
-        }
+    @ExceptionHandler(value = ResponseSigningException.class)
+    public ResponseEntity<?> handleResponseSigningException(TargetApplicationException e) {
+        ErrorResponse error = ErrorResponse.dummyErrorResponse();
+        return handleErrorResponse(error, e);
+    }
 
-        private RequestEntity<Object> createRequestEntity() {
-            return null;
-        }
+    @ExceptionHandler(value = Exception.class)
+    public ResponseEntity<?> handleUnknownException(Exception e) {
+        ErrorResponse error = ErrorResponse.dummyErrorResponse();
+        return handleErrorResponse(error, e);
+    }
 
-        private void addCustomHeaders(HttpServletResponse response, ResponseEntity responseEntity) {
-            String contentDigest = createContentDigest(responseEntity);
-
-            addContentDigestHeader(response, contentDigest);
-
-            addSignature(contentDigest, response);
-        }
-
-        private String createContentDigest(ResponseEntity responseEntity) {
-            return null;
-        }
-
-        private void addContentDigestHeader(HttpServletResponse response, String contentDigest) {
-        }
-
-        private void addSignature(String contentDigest, HttpServletResponse response) {
+    private ResponseEntity<?> handleErrorResponse(ErrorResponse error, Exception e) {
+        log.warn("Error for verifying or signing ", e);
+        try {
+            String errorResponse = objectMapper.writer().writeValueAsString(error);
+            Message message = signTargetResponse(errorResponse);
+            HttpHeaders responseHeaders = new HttpHeaders();
+            responseHeaders.put(X_CONTENT_DIGEST, newArrayList(message.getDigest()));
+            responseHeaders.put(X_SIGNATURE, newArrayList(message.getSignature()));
+            return new ResponseEntity<Object>(message.getMessage(),
+                    responseHeaders,
+                    HttpStatus.OK);
+        } catch (Exception x) {
+            throw new RuntimeException("Error during creation of error response", x);
         }
     }
 }

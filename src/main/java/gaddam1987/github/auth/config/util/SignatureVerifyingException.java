@@ -1,7 +1,11 @@
 package gaddam1987.github.auth.config.util;
 
 public class SignatureVerifyingException extends AuthenticationException {
-    public SignatureVerifyingException(String s) {
-        super(s);
+    SignatureVerifyingException(String s, Throwable cause) {
+        super(s, cause);
+    }
+
+    SignatureVerifyingException(String message) {
+        super(message);
     }
 }

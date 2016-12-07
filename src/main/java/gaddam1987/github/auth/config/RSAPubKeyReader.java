@@ -24,15 +24,14 @@ import java.security.spec.X509EncodedKeySpec;
 public class RSAPubKeyReader {
 
     @Value("${keys.private.key.location}")
-    String privateKeyLocation;
+    Resource privateKeyResource;
 
     @Value("${keys.public.key.location}")
-    String publicKeyLocation;
+    Resource publicKeyResource;
 
 
     public PrivateKey getPrivateKey() {
-        Resource resource = new ClassPathResource(privateKeyLocation);
-        try (BufferedReader k = new BufferedReader(new FileReader(resource.getURL().getPath()))) {
+        try (BufferedReader k = new BufferedReader(new FileReader(privateKeyResource.getURL().getPath()))) {
             PemReader pemReader = new PemReader(new BufferedReader(k));
             PemObject pemObject = pemReader.readPemObject();
             KeyFactory factory = KeyFactory.getInstance("RSA", "BC");
@@ -43,9 +42,8 @@ public class RSAPubKeyReader {
         }
     }
 
-    public PublicKey getPublicKey() throws IOException {
-        Resource resource = new ClassPathResource(publicKeyLocation);
-        try (BufferedReader k = new BufferedReader(new FileReader(resource.getURL().getPath()))) {
+    public PublicKey getPublicKey() {
+        try (BufferedReader k = new BufferedReader(new FileReader(publicKeyResource.getURL().getPath()))) {
             PemReader pemReader = new PemReader(new BufferedReader(k));
             PemObject pemObject = pemReader.readPemObject();
             X509EncodedKeySpec x509EncodedKeySpec = new X509EncodedKeySpec(pemObject.getContent());

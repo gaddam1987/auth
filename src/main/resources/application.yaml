@@ -8,10 +8,10 @@ hello:
 keys:
    private:
      key:
-       location: app1_private_key.pem
+       location: classpath:app1_private_key.pem
    public:
      key:
-       location: app1_public_key.pem
+       location: classpath:app1_public_key.pem
 spring:
   profiles: inst1
 
@@ -27,9 +27,9 @@ hello:
 keys:
    private:
      key:
-       location: app2_private.pem
+       location: classpath:app2_private.pem
    public:
      key:
-       location: app2_public.pem
+       location: classpath:app2_public.pem
 spring:
   profiles: inst2
