@@ -18,6 +18,8 @@ import static org.apache.commons.codec.binary.Base64.encodeBase64;
 @Component
 public class RSASHA1SignatureUtil {
     private static final String SIGNATURE_NAME = "SHA256withRSA";
+    public static final String SHA_256 = "SHA-256";
+    public static final String RSA_SHA256 = "RSA-SHA256";
 
     private final RSAPubKeyReader rsaKeyReader;
 
@@ -97,5 +99,20 @@ public class RSASHA1SignatureUtil {
         MessageDigest instance = MessageDigest.getInstance("SHA-256");
         instance.update(message.getBytes());
         return instance.digest();
+    }
+
+    private static String parseHeader(String header) {
+        int i = header.indexOf(' ');
+        if (i >= 0) {
+            String scheme = header.substring(0, i).trim();
+            if (scheme.equalsIgnoreCase(SHA_256) || scheme.equalsIgnoreCase(RSA_SHA256)) {
+                return header.substring(i + 1);
+            }
+        }
+        throw new IllegalArgumentException("Hello");
+    }
+
+    public static void main(String[] args) {
+        System.out.println(parseHeader("SHA-256 123456"));
     }
 }

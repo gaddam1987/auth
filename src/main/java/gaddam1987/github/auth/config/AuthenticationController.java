@@ -115,13 +115,13 @@ public class AuthenticationController {
     }
 
     @ExceptionHandler(value = SignatureVerifyingException.class)
-    public ResponseEntity<?> handleRequestVerificationException(TargetApplicationException e) {
+    public ResponseEntity<?> handleRequestVerificationException(SignatureVerifyingException e) {
         ErrorResponse error = ErrorResponse.dummyErrorResponse();
         return handleErrorResponse(error, e);
     }
 
     @ExceptionHandler(value = ResponseSigningException.class)
-    public ResponseEntity<?> handleResponseSigningException(TargetApplicationException e) {
+    public ResponseEntity<?> handleResponseSigningException(ResponseSigningException e) {
         ErrorResponse error = ErrorResponse.dummyErrorResponse();
         return handleErrorResponse(error, e);
     }
